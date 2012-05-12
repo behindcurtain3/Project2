@@ -21,6 +21,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.sql.SQLException;
 import java.text.DateFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
@@ -125,6 +126,10 @@ public class MainFrame extends JFrame {
 	 * Constructor.
 	 */
 	public MainFrame() {
+		DatabaseManager database = new DatabaseManager();
+		database.connect();
+		
+		
 		// Set the icon for the program
 		setIconImage(Toolkit.getDefaultToolkit().getImage("icon.png"));
 		
