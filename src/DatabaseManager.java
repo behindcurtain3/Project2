@@ -12,13 +12,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 public class DatabaseManager {
-	public String TABLE_ITEMS = "items";
-	public String TABLE_TRANSACTIONS = "transactions";
+	// Unmutable strings to refer to the table names
+	public final String TABLE_ITEMS = "items";
+	public final String TABLE_TRANSACTIONS = "transactions";
 	
 	// The driver to connect with
-	public String driver = "org.apache.derby.jdbc.EmbeddedDriver";
-	public String protocol = "jdbc:derby:";
-	public String dbName = "Project2DB";
+	private String driver = "org.apache.derby.jdbc.EmbeddedDriver";
+	private String protocol = "jdbc:derby:";
+	private String dbName = "Project2DB";
 	
 	private Connection connection;
 	
@@ -47,10 +48,17 @@ public class DatabaseManager {
 		try {
 			// Derby has no built in query to check if a table exists or not
 			// So just try to create the tables every time and fail silently if they already exist.
-			createItemsTable();
+			createItemsTable();			
 		}
 		catch(SQLException ex) {
-			
+			System.out.println(ex.getMessage());
+		}
+		
+		try {
+			createTransactionsTable();
+		}
+		catch(SQLException ex) {
+			System.out.println(ex.getMessage());
 		}
 		
 		/*
@@ -84,16 +92,45 @@ public class DatabaseManager {
 		return smt.executeQuery(query);
 	}
 	
+	public Connection getConnection() {
+		return connection;
+	}
+	
+	public String getDbName() {
+		return dbName;
+	}
+	
 	private void createItemsTable() throws SQLException {
 		String createString = 
 			"create table " + dbName + "." + TABLE_ITEMS +
-			"(ITEM_ID int NOT NULL, " +
+			"(ITEM_ID int NOT NULL GENERATED ALWAYS AS IDENTITY (START WITH 1, INCREMENT BY 1), " +
 			"NAME varchar(32) NOT NULL, " +
 			"PRIMARY KEY (ITEM_ID))";
 		
 		Statement stmt = connection.createStatement();
 	    stmt.executeUpdate(createString);
-	    stmt.close(); 
+	    stmt.close();
 	    
+	    System.out.println("Created Items table.");
+	}
+	
+	private void createTransactionsTable() throws SQLException {
+		String createString = "" +
+				"create table " + dbName + "." + TABLE_TRANSACTIONS +
+				"(TRANSACTION_ID int NOT NULL GENERATED ALWAYS AS IDENTITY (START WITH 1, INCREMENT BY 1)," +
+				"DATE date NOT NULL, " + 
+				"SUBTOTAL double NOT NULL, " +
+				"SALES_TAX double NOT NULL, " +
+				"GRAND_TOTAL double NOT NULL, " +
+				"ITEMS clob, " +
+				"PRIMARY KEY (TRANSACTION_ID))";
+		
+		Statement stmt = connection.createStatement();
+		
+		stmt.executeUpdate(createString);
+		stmt.close();
+		
+		System.out.println("Created Transactions table.");
+		
 	}
 }

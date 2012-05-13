@@ -8,6 +8,7 @@
 //////////////////////////////////////////////////////////////////////
 
 import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
@@ -98,6 +99,11 @@ public class Transaction {
 	// Getter for the date
 	public String getDate() {
 		return DateFormat.getInstance().format(date);
+	}
+	
+	SimpleDateFormat format = new SimpleDateFormat("yyyy-mm-dd hh:mm:ss");
+	public String getDateFormatted() {
+		return format.format(date);
 	}
 	
 	// Setter for the sub total

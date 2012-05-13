@@ -21,7 +21,12 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Reader;
+import java.sql.Clob;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.text.DateFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
@@ -56,6 +61,9 @@ public class MainFrame extends JFrame {
 	private Properties properties;
 	private final String propertiesName = "settings.properties";
 	private final String defaultDataName = "transactions.project1";
+	
+	// Database
+	private DatabaseManager dbManager;
 	
 	// The transaction currently being entered
 	private Transaction currentTransaction;
@@ -126,8 +134,11 @@ public class MainFrame extends JFrame {
 	 * Constructor.
 	 */
 	public MainFrame() {
-		DatabaseManager database = new DatabaseManager();
-		database.connect();
+		// Create our database manager object
+		dbManager = new DatabaseManager();
+		
+		// Connect to the database
+		dbManager.connect();
 		
 		
 		// Set the icon for the program
@@ -267,6 +278,7 @@ public class MainFrame extends JFrame {
         	}
         });
         
+		/*
         // Load our data file, this will read previously saved transaction into the program
         try {
         	File f = new File(fileName);
@@ -384,7 +396,41 @@ public class MainFrame extends JFrame {
 		} catch (IOException e) {
 			throw new Error("Unable to create the required data file.");
 		}
-        
+        */
+		
+		try {
+			String strPs = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_TRANSACTIONS;
+			
+			System.out.println(strPs);
+			
+			PreparedStatement ps = dbManager.getConnection().prepareStatement(strPs);
+			ResultSet result = ps.executeQuery();
+			
+			while(result.next()) {
+				
+				Clob items = result.getClob("ITEMS");
+				String itemStr = items.getSubString(1, (int) items.length());
+				
+				
+				
+				
+				System.out.println(itemStr);
+				Transaction t = new Transaction();
+				t.setDate(result.getDate("DATE"));
+				t.setSubTotal(result.getDouble("SUBTOTAL"));
+				t.setSalesTax(result.getDouble("SALES_TAX"));
+				t.setGrandTotal(result.getDouble("GRAND_TOTAL"));
+				
+				// Add the transaction to the recent transactions table
+				tableTransactions.getModel().setValueAt(t, 0, 0);
+				
+				// Update the report tab
+				updateReport(t);
+			}
+		}
+		catch(SQLException ex) {
+			System.out.println(ex.getMessage());
+		}
         // Add a listener for when the application closes
   		// Use this to save and close files we may have open        
   		this.addWindowListener(new WindowAdapter() {
@@ -400,6 +446,45 @@ public class MainFrame extends JFrame {
 	 * It formats the data in a way that can be parsed in again later.
 	 */
 	public void saveTransaction(Transaction transaction) {
+		try {
+			String itemBlob = "";
+			// Loop through each item and add it to the item string
+			for(int i = 0; i < transaction.getItems().size(); i++) {
+				if(i != 0) {
+					itemBlob += ","; // Add comma but not on the first item 	
+				}
+				
+				itemBlob += "["; // Start of item
+				
+				// Add the data
+				itemBlob += transaction.getItems().get(i).getName() + "~~";
+				itemBlob += transaction.getItems().get(i).getPrice() + "~~";
+				itemBlob += String.valueOf(transaction.getItems().get(i).getQuantity());
+				
+				itemBlob += "]"; // End of item
+			}
+			
+			String psStr = "INSERT INTO " + dbManager.getDbName() + "." + dbManager.TABLE_TRANSACTIONS +
+			"(DATE, SUBTOTAL, SALES_TAX, GRAND_TOTAL, ITEMS) " +
+			"VALUES ('" + Timestamp.valueOf(transaction.getDateFormatted()) + "', " +
+			transaction.getSubTotal() + ", " +
+			transaction.getSalesTax() + ", " +
+			transaction.getGrandTotal() + ", " +
+			"'" + itemBlob + "')";
+			
+			PreparedStatement ps = dbManager.getConnection().prepareStatement(psStr);
+			ps.executeUpdate();
+			ps.close();
+			
+			System.out.println("Saved to database.");
+		}
+		catch (SQLException ex) {
+			System.out.println(ex.getMessage());
+		}
+		
+		if(dataFileBuffer == null)
+			return;
+		
 		// Write the transaction details to file
 		try {
 			dataFileBuffer.append("{"); // Start
@@ -463,7 +548,9 @@ public class MainFrame extends JFrame {
 	public void exit() {
 		try {
 		    properties.store(new FileOutputStream(propertiesName), null);
-		    dataFileBuffer.close();
+		    
+		    if(dataFileBuffer != null)
+		    	dataFileBuffer.close();
 		    
 		} catch (IOException e) {
 			JOptionPane.showMessageDialog(null, "An error occured: " + e.getMessage());
