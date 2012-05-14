@@ -81,6 +81,7 @@ public class DatabaseManager {
 			"(ITEM_ID int NOT NULL GENERATED ALWAYS AS IDENTITY (START WITH 1, INCREMENT BY 1), " +
 			"NAME varchar(32) NOT NULL, " +
 			"DEFAULT_PRICE double NOT NULL, " +
+			"ACTIVE smallint DEFAULT 1 NOT NULL, " +
 			"PRIMARY KEY (ITEM_ID))";
 		
 		Statement stmt = connection.createStatement();

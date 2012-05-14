@@ -10,8 +10,11 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.Font;
+import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.sql.Clob;
@@ -39,9 +42,7 @@ import javax.swing.SwingConstants;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.border.EmptyBorder;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.Toolkit;
+import javax.swing.table.DefaultTableCellRenderer;
 
 
 public class MainFrame extends JFrame {	
@@ -75,6 +76,9 @@ public class MainFrame extends JFrame {
 	private JLabel lblRevenueValue;
 	private JLabel lblNetSalesTaxValue;
 	private JLabel lblNetIncomeValue;	
+	private JTextField textAddItemName;
+	private JTextField textAddItemPrice;
+	private JTable tableInventory;
 
 	/**
 	 * Launch the application.
@@ -301,10 +305,7 @@ public class MainFrame extends JFrame {
 						// Add the item to the transaction
 						t.addItem(it);
 					}
-				}
-				
-				// Close the statement
-				ps.close();
+				}				
 				
 				// Add the transaction to the recent transactions table
 				tableTransactions.getModel().setValueAt(t, 0, 0);
@@ -312,10 +313,44 @@ public class MainFrame extends JFrame {
 				// Update the report tab
 				updateReport(t);
 			}
+			
+			// Close the statement
+			ps.close();
+			
 		}
 		catch(SQLException ex) {
 			System.out.println(ex.getMessage());
 		}
+		
+		// Load the item inventory into the table
+		try {
+			// Setup the query
+			String query = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY;
+			
+			// Execute it
+			PreparedStatement ps = dbManager.getConnection().prepareStatement(query);
+			ResultSet results = ps.executeQuery();
+			
+			// Loop through each row from the query results
+			while(results.next()) {
+				InventoryItem item = new InventoryItem();
+				
+				item.setID(results.getInt("ITEM_ID"));
+				item.setName(results.getString("NAME"));
+				item.setPrice(results.getDouble("DEFAULT_PRICE"));
+				item.setActive(results.getBoolean("ACTIVE"));				
+				
+				tableInventory.getModel().setValueAt(item, 0, 0);				
+			}
+					
+			results.close();
+			ps.close();
+			
+		} catch(SQLException e) {
+			JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+		}
+		
+		
         // Add a listener for when the application closes
   		// Use this to save and close files we may have open        
   		this.addWindowListener(new WindowAdapter() {
@@ -546,7 +581,7 @@ public class MainFrame extends JFrame {
 		JMenuItem menuButtonAbout = new JMenuItem("About");
 		menuButtonAbout.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent a) {
-				JOptionPane.showMessageDialog(null, "Java Programming, Project #1 by Justin Brown");
+				JOptionPane.showMessageDialog(null, "Java Programming, Project #2 by Justin Brown");
 			}
 		});
 		menuHelp.add(menuButtonAbout);
@@ -731,5 +766,123 @@ public class MainFrame extends JFrame {
         lblDetailsAreCurrent.setHorizontalAlignment(SwingConstants.RIGHT);
         lblDetailsAreCurrent.setBounds(223, 18, 286, 14);
         tabReportPanel.add(lblDetailsAreCurrent);
+        
+        JPanel tabInventoryPanel = new JPanel();
+        tabbedPane.addTab("Inventory", null, tabInventoryPanel, null);
+        tabInventoryPanel.setLayout(null);
+        
+        JLabel lblInventory = new JLabel("Item Inventory");
+        lblInventory.setFont(new Font("Cambria", Font.BOLD, 18));
+        lblInventory.setBounds(10, 11, 174, 22);
+        tabInventoryPanel.add(lblInventory);
+        
+        JSeparator separator_2 = new JSeparator();
+        separator_2.setBounds(10, 39, 499, 4);
+        tabInventoryPanel.add(separator_2);
+        
+        JLabel lblAddNewItem = new JLabel("New Item Name:");
+        lblAddNewItem.setBounds(20, 54, 104, 14);
+        tabInventoryPanel.add(lblAddNewItem);
+        
+        textAddItemName = new JTextField();
+        textAddItemName.setToolTipText("Item Name\r\n");
+        textAddItemName.setBounds(108, 51, 86, 20);
+        tabInventoryPanel.add(textAddItemName);
+        textAddItemName.setColumns(10);
+        
+        JLabel lblDefaultPrice = new JLabel("Default Price:");
+        lblDefaultPrice.setBounds(208, 54, 86, 14);
+        tabInventoryPanel.add(lblDefaultPrice);
+        
+        textAddItemPrice = new JTextField();
+        textAddItemPrice.setBounds(280, 51, 86, 20);
+        tabInventoryPanel.add(textAddItemPrice);
+        textAddItemPrice.setColumns(10);
+        
+        JButton btnAddItemToInventory = new JButton("Add Item");
+        
+        // Listen for clicks on the add item button
+        btnAddItemToInventory.addActionListener(new ActionListener() {
+        	public void actionPerformed(ActionEvent arg0) {
+        		try {
+        			if(textAddItemName.getText().equals("") || textAddItemPrice.getText().equals(""))
+        			{
+        				JOptionPane.showMessageDialog(null, "You must enter an item name and default price.", "Error", JOptionPane.ERROR_MESSAGE);
+        				return;
+        			}
+        			
+        			double price;
+        			try {
+        				price = Double.parseDouble(textAddItemPrice.getText());
+        			} catch(NumberFormatException e) {
+        				JOptionPane.showMessageDialog(null, "You must enter a valid default price.", "Error", JOptionPane.ERROR_MESSAGE);
+        				return;
+        			}
+        			
+        			String query = "INSERT INTO " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY +
+        				" (NAME, DEFAULT_PRICE) " +
+        				"VALUES('" + textAddItemName.getText() + "', " +
+        				price + ")";
+        			
+        			try {
+        				// Get a prepared statement, the 2nd argument allows us to get the id of the inserted row
+						PreparedStatement ps = dbManager.getConnection().prepareStatement(query, PreparedStatement.RETURN_GENERATED_KEYS);
+						ps.executeUpdate();
+						
+						
+						ResultSet rs = ps.getGeneratedKeys();
+						
+						while(rs.next()) {
+							int id = rs.getInt(1);
+							
+							InventoryItem addedItem = new InventoryItem();
+							addedItem.setID(id);
+							addedItem.setName(textAddItemName.getText());
+							addedItem.setPrice(price);
+							addedItem.setActive(true);							
+							
+							// Set the active column
+							tableInventory.getModel().setValueAt(addedItem, 0, 0);
+						}
+						
+						ps.close();
+						
+						// Clear the fields
+						textAddItemName.setText("");
+						textAddItemPrice.setText("");
+						
+					} catch (SQLException e) {
+						JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+					}
+        		} catch (NumberFormatException e) {
+        			JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        		}
+        	}
+        });
+        btnAddItemToInventory.setBounds(391, 50, 89, 23);
+        tabInventoryPanel.add(btnAddItemToInventory);
+        
+        tableInventory = new JTable(new InventoryTableModel());
+        tableInventory.setFillsViewportHeight(true);        
+        tableInventory.setIntercellSpacing(new Dimension(4, 1));
+        
+        // Set the column widths to custom lengths
+        tableInventory.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        tableInventory.getColumnModel().getColumn(0).setPreferredWidth(45);
+        tableInventory.getColumnModel().getColumn(1).setPreferredWidth(250);
+        tableInventory.getColumnModel().getColumn(2).setPreferredWidth(81);
+        tableInventory.getColumnModel().getColumn(3).setPreferredWidth(100);
+        
+        // Setup the display of the inventory table
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(JLabel.CENTER);
+        tableInventory.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
+        tableInventory.getColumnModel().getColumn(2).setCellRenderer(centerRenderer);
+        
+        JScrollPane scrollPaneInventoryTable = new JScrollPane(tableInventory);
+        scrollPaneInventoryTable.setBounds(20, 84, 478, 215);
+        tabInventoryPanel.add(scrollPaneInventoryTable);
+        
+        
 	}
 }
