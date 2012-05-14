@@ -13,7 +13,7 @@ import java.sql.Statement;
 
 public class DatabaseManager {
 	// Unmutable strings to refer to the table names
-	public final String TABLE_ITEMS = "items";
+	public final String TABLE_INVENTORY = "inventory";
 	public final String TABLE_TRANSACTIONS = "transactions";
 	
 	// The driver to connect with
@@ -23,16 +23,8 @@ public class DatabaseManager {
 	
 	private Connection connection;
 	
-	public DatabaseManager() {
-		try {
-			Class.forName(driver).newInstance();
-		} catch (InstantiationException e) {
-			e.printStackTrace();
-		} catch (IllegalAccessException e) {
-			e.printStackTrace();
-		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
-		}
+	public DatabaseManager() throws InstantiationException, IllegalAccessException, ClassNotFoundException {
+		Class.forName(driver).newInstance();		
 	}
 	
 	public boolean connect() {
@@ -48,7 +40,7 @@ public class DatabaseManager {
 		try {
 			// Derby has no built in query to check if a table exists or not
 			// So just try to create the tables every time and fail silently if they already exist.
-			createItemsTable();			
+			createInventoryTable();			
 		}
 		catch(SQLException ex) {
 			System.out.println(ex.getMessage());
@@ -61,30 +53,10 @@ public class DatabaseManager {
 			System.out.println(ex.getMessage());
 		}
 		
-		/*
-		try {
-			// Check to see if the tables already exist
-			Statement smt = connection.createStatement();
-			ResultSet result = smt.executeQuery("SELECT * FROM " + dbName + "." + TABLE_ITEMS);
-		
-			if(!result.next()) {
-				// Create the table
-				System.out.println("Creating the " + TABLE_ITEMS + " table.");
-				
-				
-				createItemsTable();
-			}
-			smt.close();
-		}
-		catch(SQLException sqlEx) {
-			System.out.println(sqlEx.getMessage());
-			return false;
-		}
-		*/
-		return true;
-		
+		return true;		
 	}
 	
+	// Executes a query for the string passed in
 	public ResultSet executeQuery(String query) throws SQLException {
 		
 		Statement smt = connection.createStatement();
@@ -92,33 +64,38 @@ public class DatabaseManager {
 		return smt.executeQuery(query);
 	}
 	
+	// Return the database connection
 	public Connection getConnection() {
 		return connection;
 	}
 	
+	// Return the database name
 	public String getDbName() {
 		return dbName;
 	}
 	
-	private void createItemsTable() throws SQLException {
+	// Create the items table
+	private void createInventoryTable() throws SQLException {
 		String createString = 
-			"create table " + dbName + "." + TABLE_ITEMS +
+			"create table " + dbName + "." + TABLE_INVENTORY +
 			"(ITEM_ID int NOT NULL GENERATED ALWAYS AS IDENTITY (START WITH 1, INCREMENT BY 1), " +
 			"NAME varchar(32) NOT NULL, " +
+			"DEFAULT_PRICE double NOT NULL, " +
 			"PRIMARY KEY (ITEM_ID))";
 		
 		Statement stmt = connection.createStatement();
 	    stmt.executeUpdate(createString);
 	    stmt.close();
 	    
-	    System.out.println("Created Items table.");
+	    System.out.println("Created Inventory table.");
 	}
 	
+	// Create the transactions table
 	private void createTransactionsTable() throws SQLException {
 		String createString = "" +
 				"create table " + dbName + "." + TABLE_TRANSACTIONS +
 				"(TRANSACTION_ID int NOT NULL GENERATED ALWAYS AS IDENTITY (START WITH 1, INCREMENT BY 1)," +
-				"DATE date NOT NULL, " + 
+				"DATE timestamp NOT NULL, " + 
 				"SUBTOTAL double NOT NULL, " +
 				"SALES_TAX double NOT NULL, " +
 				"GRAND_TOTAL double NOT NULL, " +

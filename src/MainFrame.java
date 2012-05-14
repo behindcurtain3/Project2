@@ -14,25 +14,13 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.Reader;
 import java.sql.Clob;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.text.DateFormat;
 import java.text.NumberFormat;
-import java.text.ParseException;
 import java.util.Date;
-import java.util.Properties;
-import java.util.Scanner;
 
 import javax.swing.JButton;
 import javax.swing.JFrame;
@@ -56,12 +44,7 @@ import java.awt.event.MouseEvent;
 import java.awt.Toolkit;
 
 
-public class MainFrame extends JFrame {
-	// Settings
-	private Properties properties;
-	private final String propertiesName = "settings.properties";
-	private final String defaultDataName = "transactions.project1";
-	
+public class MainFrame extends JFrame {	
 	// Database
 	private DatabaseManager dbManager;
 	
@@ -91,13 +74,7 @@ public class MainFrame extends JFrame {
 	private JLabel numberOfTransactionsValue;
 	private JLabel lblRevenueValue;
 	private JLabel lblNetSalesTaxValue;
-	private JLabel lblNetIncomeValue;
-	
-	// Files
-	private String fileName;
-	private Scanner dataFileScanner;
-	private FileWriter dataFileStream;
-	private BufferedWriter dataFileBuffer;
+	private JLabel lblNetIncomeValue;	
 
 	/**
 	 * Launch the application.
@@ -134,51 +111,32 @@ public class MainFrame extends JFrame {
 	 * Constructor.
 	 */
 	public MainFrame() {
-		// Create our database manager object
-		dbManager = new DatabaseManager();
-		
-		// Connect to the database
-		dbManager.connect();
-		
+		// Try to create our database manager object
+		try {
+			dbManager = new DatabaseManager();
+			
+		// Catch any exceptions and display an error message.
+		} catch (InstantiationException e) {
+			JOptionPane.showMessageDialog(null, e.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+		} catch (IllegalAccessException e) {
+			JOptionPane.showMessageDialog(null, e.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+		} catch (ClassNotFoundException e) {
+			JOptionPane.showMessageDialog(null, "Database driver not found: " + e.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
+		}
+		finally	{
+			// If the database wasn't created or we can't connect to it display an error message and exit the application
+			if(dbManager == null || !dbManager.connect())
+			{
+				JOptionPane.showMessageDialog(null, "Unable to connect to database.", "Database Error", JOptionPane.ERROR_MESSAGE);
+				System.exit(0);
+			}
+		}		
 		
 		// Set the icon for the program
 		setIconImage(Toolkit.getDefaultToolkit().getImage("icon.png"));
 		
 		// Setup our transaction object, we will reuse this for all new transactions
 		currentTransaction = new Transaction();
-				
-		// Read properties file.
-		properties = new Properties();
-		do {
-			// Try to load the properties file
-			try {
-			    properties.load(new FileInputStream(propertiesName));		    
-			    
-			// If it couldn't be found, create one
-			} catch (IOException e) {
-				try {
-					// Set the default file name
-					properties.setProperty("file", defaultDataName);
-					
-					// Save it
-				    properties.store(new FileOutputStream(propertiesName), null);
-				
-				// If there is an error creating the file, throw an error and exit
-				} catch (IOException ee) {
-					throw new Error("Unable to create the required settings file.");
-				}
-			}
-		
-			// Make sure the data file name is set
-			if(!properties.containsKey("file")) {
-		    	properties.setProperty("file", defaultDataName);
-		    }
-			
-		} while(properties.isEmpty());
-			    
-		// Read in the data file name, always check to make sure the property value isn't ""
-		// If it is "" use the default name
-	    fileName = properties.getProperty("file").equals("") ? defaultDataName : properties.getProperty("file"); 
 		
 		// Setup currency format
 		currencyFormat = NumberFormat.getCurrencyInstance();
@@ -277,149 +235,76 @@ public class MainFrame extends JFrame {
         		}
         	}
         });
-        
-		/*
-        // Load our data file, this will read previously saved transaction into the program
-        try {
-        	File f = new File(fileName);
-        	Boolean newFile = false;
-        	
-        	// If the file doesn't exist create it
-        	if(!f.exists()){
-        		f.createNewFile();
-        		newFile = true;
-        	}
-        	
-        	// Setup our writing stream
-			dataFileStream = new FileWriter(fileName, true);
-			dataFileBuffer = new BufferedWriter(dataFileStream);
-			
-			// If the file is marked as new, add these lines at the top
-			if(newFile) {
-				dataFileBuffer.write("# Project 1 Transaction Log");
-				dataFileBuffer.newLine();
-				dataFileBuffer.write("# Created " + new Date().toString());
-				dataFileBuffer.newLine();
-				dataFileBuffer.flush();
-			}
-        	
-        	// Use the scanner to load in recent transactions already in the data file
-			dataFileScanner = new Scanner(new File(fileName));
-			
-			// Loop through the lines
-			while(dataFileScanner.hasNext()) {
-				// Read the line
-				String line = dataFileScanner.nextLine();
-				String[] segments;
-				
-				// If it isn't a comment try to load it
-				if(line.startsWith("{") && line.endsWith("}")) {
-					
-					// Trim the { } off
-					line = line.substring(1);
-					line = line.substring(0, line.length() - 1);
-					
-					// Split the line into segments based on the , delimiter
-					segments = line.split(",");
-					
-					// Skip any lines that have less than the minimum number of segments
-					if(segments.length < 5) {
-						continue;
-					}
-					
-					// Create a new transaction that we will add data to
-					Transaction t = new Transaction();
-					
-					// Try to parse in the data
-					try {
-						t.setDate(DateFormat.getInstance().parse(segments[0]));
-						t.setSubTotal(Double.parseDouble(segments[1]));
-						t.setSalesTax(Double.parseDouble(segments[2]));
-						t.setGrandTotal(Double.parseDouble(segments[3]));
-						
-					// If there is a parse error continue to the next line
-					} catch (ParseException ex) {
-						continue;
-					}
-					
-					// Loop through the items and add them to the transaction
-					String item;
-					for(int i = 4; i < segments.length; i++){
-						item = segments[i];
-						
-						// Make sure its formatted correctly
-						if(item.startsWith("[") && item.endsWith("]")) {
-							
-							// Split off the surrounding [ & ]
-							item = item.substring(1);
-							item = item.substring(0, item.length() - 1);
-							
-							// Split the item string into segments
-							String itemSegments[] = item.split("~~");
-							
-							// If there aren't three segments something is wrong, just go the next one
-							if(itemSegments.length != 3){
-								continue;
-							}
-							
-							// Load the data into a new item
-							Item it = new Item();
-							it.setName(itemSegments[0]);
-							
-							// try to parse the data into double & int respectively
-							try {
-								it.setPrice(Double.parseDouble(itemSegments[1]));
-								it.setQuantity(Integer.parseInt(itemSegments[2]));
-								
-							// If it isn't formatted right go to the next item
-							} catch (NumberFormatException ex) {
-								continue;
-							}
-							
-							// Add the item to the transaction
-							t.addItem(it);
-						}
-					}					
-					
-					// Add the transaction to the recent transactions table
-					tableTransactions.getModel().setValueAt(t, 0, 0);
-					
-					// Update the report tab
-					updateReport(t);
-					
-				}
-			}			
-			
-		// Catch any errors
-		} catch (FileNotFoundException e1) {
-			throw new Error("Unable to create the required data file.");
-		} catch (IOException e) {
-			throw new Error("Unable to create the required data file.");
-		}
-        */
 		
+		// Load the transactions from the database into the recent transactions display
 		try {
-			String strPs = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_TRANSACTIONS;
+			// Our query, select transactions ordered by date
+			String strPs = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_TRANSACTIONS +
+					" ORDER BY DATE ASC";
 			
-			System.out.println(strPs);
-			
+			// Use a prepared statement to execute on the database
 			PreparedStatement ps = dbManager.getConnection().prepareStatement(strPs);
 			ResultSet result = ps.executeQuery();
 			
+			// Loop through the results
 			while(result.next()) {
-				
-				Clob items = result.getClob("ITEMS");
-				String itemStr = items.getSubString(1, (int) items.length());
-				
-				
-				
-				
-				System.out.println(itemStr);
+				// Create a new transaction to store the information in
 				Transaction t = new Transaction();
-				t.setDate(result.getDate("DATE"));
+				
+				// Set the data
+				t.setDate(result.getTimestamp("DATE"));
 				t.setSubTotal(result.getDouble("SUBTOTAL"));
 				t.setSalesTax(result.getDouble("SALES_TAX"));
 				t.setGrandTotal(result.getDouble("GRAND_TOTAL"));
+				
+				// Read in the items
+				Clob items = result.getClob("ITEMS");
+				
+				// Read the items from the clob into a string
+				String itemStr = items.getSubString(1, (int) items.length());
+				
+				// Loop through the items and add them to the transaction
+				String[] segments = itemStr.split(",");
+				String item;
+				for(int i = 0; i < segments.length; i++){
+					item = segments[i];
+					
+					// Make sure its formatted correctly
+					if(item.startsWith("[") && item.endsWith("]")) {
+						
+						// Split off the surrounding [ & ]
+						item = item.substring(1);
+						item = item.substring(0, item.length() - 1);
+						
+						// Split the item string into segments
+						String itemSegments[] = item.split("~~");
+						
+						// If there aren't three segments something is wrong, just go the next one
+						if(itemSegments.length != 3){
+							continue;
+						}
+						
+						// Load the data into a new item
+						Item it = new Item();
+						it.setName(itemSegments[0]);
+						
+						// try to parse the data into double & int respectively
+						try {
+							it.setPrice(Double.parseDouble(itemSegments[1]));
+							it.setQuantity(Integer.parseInt(itemSegments[2]));
+							
+						// If it isn't formatted right go to the next item
+						} catch (NumberFormatException ex) {
+							continue;
+						}
+						
+						// Add the item to the transaction
+						t.addItem(it);
+					}
+				}
+				
+				// Close the statement
+				ps.close();
 				
 				// Add the transaction to the recent transactions table
 				tableTransactions.getModel().setValueAt(t, 0, 0);
@@ -479,43 +364,9 @@ public class MainFrame extends JFrame {
 			System.out.println("Saved to database.");
 		}
 		catch (SQLException ex) {
-			System.out.println(ex.getMessage());
+			JOptionPane.showMessageDialog(null, "Unable to save the transaction to database.", "Error", JOptionPane.ERROR_MESSAGE);
 		}
 		
-		if(dataFileBuffer == null)
-			return;
-		
-		// Write the transaction details to file
-		try {
-			dataFileBuffer.append("{"); // Start
-			dataFileBuffer.append(transaction.getDate() + ","); // Add the date
-			dataFileBuffer.append(transaction.getSubTotal() + ","); // Add the subtotal
-			dataFileBuffer.append(transaction.getSalesTax() + ","); // Add the sales tax
-			dataFileBuffer.append(transaction.getGrandTotal() + ","); // Add the grand total
-			
-			// Loop through each item and add it
-			for(int i = 0; i < transaction.getItems().size(); i++) {
-				if(i != 0) {
-					dataFileBuffer.append(","); // Add comma but not on the first item 	
-				}
-				
-				dataFileBuffer.append("["); // Start of item
-				
-				// Add the data
-				dataFileBuffer.append(transaction.getItems().get(i).getName() + "~~");
-				dataFileBuffer.append(transaction.getItems().get(i).getPrice() + "~~");
-				dataFileBuffer.append(String.valueOf(transaction.getItems().get(i).getQuantity()));
-				
-				dataFileBuffer.append("]"); // End of item
-			}
-			
-			dataFileBuffer.append("}"); // End
-			dataFileBuffer.newLine(); // Always add a newline
-			dataFileBuffer.flush(); // Flush the data to the file
-			
-		} catch (IOException e) {
-			JOptionPane.showMessageDialog(null, "Unable to save the transaction to file.");
-		}
 	}
 
 	/*
@@ -547,13 +398,10 @@ public class MainFrame extends JFrame {
 	 */
 	public void exit() {
 		try {
-		    properties.store(new FileOutputStream(propertiesName), null);
+		    dbManager.getConnection().close();
 		    
-		    if(dataFileBuffer != null)
-		    	dataFileBuffer.close();
-		    
-		} catch (IOException e) {
-			JOptionPane.showMessageDialog(null, "An error occured: " + e.getMessage());
+		} catch (SQLException e) {
+			JOptionPane.showMessageDialog(null, "An error occured: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
 		}
 	}
 	

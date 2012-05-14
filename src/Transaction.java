@@ -17,6 +17,9 @@ public class Transaction {
 	// Used to calculate sales tax
 	private final double SALES_TAX = 0.08;
 	
+	// Formatter for saving the date to the database
+	private SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+	
 	// Variables
 	private ArrayList<Item> items;
 	private double subTotal;
@@ -99,11 +102,11 @@ public class Transaction {
 	// Getter for the date
 	public String getDate() {
 		return DateFormat.getInstance().format(date);
-	}
+	}	
 	
-	SimpleDateFormat format = new SimpleDateFormat("yyyy-mm-dd hh:mm:ss");
+	// Return a formatted date string
 	public String getDateFormatted() {
-		return format.format(date);
+		return dateFormat.format(date);
 	}
 	
 	// Setter for the sub total
