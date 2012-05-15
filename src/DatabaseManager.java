@@ -87,8 +87,6 @@ public class DatabaseManager {
 		Statement stmt = connection.createStatement();
 	    stmt.executeUpdate(createString);
 	    stmt.close();
-	    
-	    System.out.println("Created Inventory table.");
 	}
 	
 	// Create the transactions table
@@ -106,9 +104,6 @@ public class DatabaseManager {
 		Statement stmt = connection.createStatement();
 		
 		stmt.executeUpdate(createString);
-		stmt.close();
-		
-		System.out.println("Created Transactions table.");
-		
+		stmt.close();		
 	}
 }

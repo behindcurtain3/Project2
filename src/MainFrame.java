@@ -2,7 +2,7 @@
 // MainFrame.java			Author: Justin Brown
 //
 // The main class of the program. Initializes the UI, sets up the
-// data, writes to and loads data from files and responds to UI
+// data, writes to and loads data from the database and responds to UI
 // events.
 //////////////////////////////////////////////////////////////////////
 
@@ -23,9 +23,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.NumberFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
@@ -43,6 +46,7 @@ import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.JComboBox;
 
 
 public class MainFrame extends JFrame {	
@@ -62,10 +66,10 @@ public class MainFrame extends JFrame {
 	// Variables for UI
 	private JPanel contentPane;
 	private JTabbedPane tabbedPane;
+	private JComboBox comboItemName;
 	private JButton btnAddItem;
 	private JButton btnSavePrint;
 	private JTable tableTransactions;	
-	private JTextField textItemName;
 	private JTextField textItemPrice; 
 	private JTextField textItemQuantity;
 	private JTable tableItems;
@@ -79,6 +83,7 @@ public class MainFrame extends JFrame {
 	private JTextField textAddItemName;
 	private JTextField textAddItemPrice;
 	private JTable tableInventory;
+	private JLabel lblReportGeneratedAt;
 
 	/**
 	 * Launch the application.
@@ -171,8 +176,14 @@ public class MainFrame extends JFrame {
 		btnAddItem.addActionListener(new ActionListener() {
         	public void actionPerformed(ActionEvent a) {
         		
+        		// Make sure the item combobox is enabled, otherwise there is no item to add
+        		if(!comboItemName.isEnabled())
+        			return;
+        		
         		// Make sure the input data isn't blank
-        		if(textItemName.getText().equals("") || textItemPrice.getText().equals("") || textItemQuantity.getText().equals("")){
+        		String itemName = (String)comboItemName.getSelectedItem();
+        		
+        		if(itemName.equals("") || textItemPrice.getText().equals("") || textItemQuantity.getText().equals("")){
         			JOptionPane.showMessageDialog(null, "Please enter values for the name, price and quantity.", "Error", JOptionPane.ERROR_MESSAGE);
         		} else {
         			// Try to parse in the inputs
@@ -181,7 +192,7 @@ public class MainFrame extends JFrame {
 	        			Item item = new Item();
 	        			
 	        			// Set the item data to the input data
-	        			item.setName(textItemName.getText());
+	        			item.setName(itemName);
 	        			item.setPrice(Double.parseDouble(textItemPrice.getText()));
 	        			item.setQuantity(Integer.parseInt(textItemQuantity.getText()));
 	        			
@@ -198,8 +209,6 @@ public class MainFrame extends JFrame {
 	        			updateTotals();
 	        			
 	        			// Clear the input fields
-	        			textItemName.setText("");
-	        			textItemPrice.setText("");
 	        			textItemQuantity.setText("");
 	        			
 	        		// Catch any parse errors and display a message to the user
@@ -229,126 +238,20 @@ public class MainFrame extends JFrame {
 	        		displayReceipt(currentTransaction);
 	        		
 	        		// Save the transaction to the data file
-	        		saveTransaction(currentTransaction);
-	        		
-	        		// Update the report tab
-	        		updateReport(currentTransaction);
+	        		saveTransaction(currentTransaction);	        		
 	        		
 	        		// Reset the current transaction
 	        		resetTransaction();
+	        		
+	        		// Refresh transactions table
+	        		refreshTransactionsTable();
         		}
         	}
         });
 		
-		// Load the transactions from the database into the recent transactions display
-		try {
-			// Our query, select transactions ordered by date
-			String strPs = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_TRANSACTIONS +
-					" ORDER BY DATE ASC";
-			
-			// Use a prepared statement to execute on the database
-			PreparedStatement ps = dbManager.getConnection().prepareStatement(strPs);
-			ResultSet result = ps.executeQuery();
-			
-			// Loop through the results
-			while(result.next()) {
-				// Create a new transaction to store the information in
-				Transaction t = new Transaction();
-				
-				// Set the data
-				t.setDate(result.getTimestamp("DATE"));
-				t.setSubTotal(result.getDouble("SUBTOTAL"));
-				t.setSalesTax(result.getDouble("SALES_TAX"));
-				t.setGrandTotal(result.getDouble("GRAND_TOTAL"));
-				
-				// Read in the items
-				Clob items = result.getClob("ITEMS");
-				
-				// Read the items from the clob into a string
-				String itemStr = items.getSubString(1, (int) items.length());
-				
-				// Loop through the items and add them to the transaction
-				String[] segments = itemStr.split(",");
-				String item;
-				for(int i = 0; i < segments.length; i++){
-					item = segments[i];
-					
-					// Make sure its formatted correctly
-					if(item.startsWith("[") && item.endsWith("]")) {
-						
-						// Split off the surrounding [ & ]
-						item = item.substring(1);
-						item = item.substring(0, item.length() - 1);
-						
-						// Split the item string into segments
-						String itemSegments[] = item.split("~~");
-						
-						// If there aren't three segments something is wrong, just go the next one
-						if(itemSegments.length != 3){
-							continue;
-						}
-						
-						// Load the data into a new item
-						Item it = new Item();
-						it.setName(itemSegments[0]);
-						
-						// try to parse the data into double & int respectively
-						try {
-							it.setPrice(Double.parseDouble(itemSegments[1]));
-							it.setQuantity(Integer.parseInt(itemSegments[2]));
-							
-						// If it isn't formatted right go to the next item
-						} catch (NumberFormatException ex) {
-							continue;
-						}
-						
-						// Add the item to the transaction
-						t.addItem(it);
-					}
-				}				
-				
-				// Add the transaction to the recent transactions table
-				tableTransactions.getModel().setValueAt(t, 0, 0);
-				
-				// Update the report tab
-				updateReport(t);
-			}
-			
-			// Close the statement
-			ps.close();
-			
-		}
-		catch(SQLException ex) {
-			System.out.println(ex.getMessage());
-		}
-		
-		// Load the item inventory into the table
-		try {
-			// Setup the query
-			String query = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY;
-			
-			// Execute it
-			PreparedStatement ps = dbManager.getConnection().prepareStatement(query);
-			ResultSet results = ps.executeQuery();
-			
-			// Loop through each row from the query results
-			while(results.next()) {
-				InventoryItem item = new InventoryItem();
-				
-				item.setID(results.getInt("ITEM_ID"));
-				item.setName(results.getString("NAME"));
-				item.setPrice(results.getDouble("DEFAULT_PRICE"));
-				item.setActive(results.getBoolean("ACTIVE"));				
-				
-				tableInventory.getModel().setValueAt(item, 0, 0);				
-			}
-					
-			results.close();
-			ps.close();
-			
-		} catch(SQLException e) {
-			JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
-		}
+		refreshTransactionsTable();		
+		refreshInventoryTable();
+		refreshItemComboBox();
 		
 		
         // Add a listener for when the application closes
@@ -524,29 +427,6 @@ public class MainFrame extends JFrame {
 	}
 	
 	/*
-	 * Takes a transaction as a parameter and updates the report tab data with the
-	 * data from the transaction.
-	 */
-	public void updateReport(Transaction t) {		
-		int numberOfTransactions = Integer.parseInt(numberOfTransactionsValue.getText());
-		double netincome = 0;
-		
-		// Increment transaction count
-		numberOfTransactions++;
-		
-		// Update the total with the new transaction data
-		totalRevenue += t.getGrandTotal();
-		totalSalesTax += t.getSalesTax(); 
-		netincome = totalRevenue - totalSalesTax;
-		
-		// Update values on the UI
-		numberOfTransactionsValue.setText(NumberFormat.getIntegerInstance().format(numberOfTransactions));
-		lblRevenueValue.setText(currencyFormat.format(totalRevenue));
-		lblNetSalesTaxValue.setText(currencyFormat.format(totalSalesTax));
-		lblNetIncomeValue.setText(currencyFormat.format(netincome));
-	}
-	
-	/*
 	 * Setup all the default UI elements
 	 */
 	public void setupUI() {
@@ -629,11 +509,6 @@ public class MainFrame extends JFrame {
         lblItemName.setBounds(10, 54, 85, 14);
         tabTransactionPanel.add(lblItemName);
         
-        textItemName = new JTextField();
-        textItemName.setBounds(147, 51, 323, 20);
-        tabTransactionPanel.add(textItemName);
-        textItemName.setColumns(10);
-        
         JLabel lblItemPrice = new JLabel("Item Price");
         lblItemPrice.setBounds(10, 79, 100, 14);
         tabTransactionPanel.add(lblItemPrice);
@@ -688,7 +563,6 @@ public class MainFrame extends JFrame {
         btnClear.addActionListener(new ActionListener() {
         	public void actionPerformed(ActionEvent a) {
         		// Clear the input fields
-    			textItemName.setText("");
     			textItemPrice.setText("");
     			textItemQuantity.setText("");
         	}
@@ -716,11 +590,50 @@ public class MainFrame extends JFrame {
         btnClearAllItems.setBounds(345, 276, 160, 23);
         tabTransactionPanel.add(btnClearAllItems);
         
+        comboItemName = new JComboBox();
+        comboItemName.addActionListener(new ActionListener() {
+        	public void actionPerformed(ActionEvent event) {
+        		String name = (String)comboItemName.getSelectedItem();
+        		
+        		// if the selected string is blank return
+        		if(name == null || name.equals(""))
+        			return;
+        		
+        		// Try to load the default price for this item
+        		try {
+        			// Setup the query
+        			String query = "SELECT (DEFAULT_PRICE) FROM " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY +
+        					" WHERE NAME = '" + name + "'";
+        			
+        			// Execute it
+        			PreparedStatement ps = dbManager.getConnection().prepareStatement(query);
+        			ResultSet result = ps.executeQuery();
+        			
+        			
+        			while(result.next()) {
+        				// Add the default price into the item price text field
+        				textItemPrice.setText(String.format("%.2f", result.getDouble("DEFAULT_PRICE")));
+        			}
+        			
+        			// Request the window to set focus to the quantity field
+        			textItemQuantity.requestFocusInWindow();
+        			
+        			result.close();
+        			ps.close();
+        			
+        		} catch(SQLException e) {
+        			JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        		}
+        	}
+        });
+        comboItemName.setBounds(147, 51, 268, 20);
+        tabTransactionPanel.add(comboItemName);
+        
         JPanel tabReportPanel = new JPanel();
         tabbedPane.addTab("Report", null, tabReportPanel, null);
         tabReportPanel.setLayout(null);
         
-        JLabel lblReportDetails = new JLabel("Report Details");
+        JLabel lblReportDetails = new JLabel("Generate Report");
         lblReportDetails.setBounds(10, 11, 165, 22);
         lblReportDetails.setFont(new Font("Cambria", Font.BOLD, 18));
         tabReportPanel.add(lblReportDetails);
@@ -729,43 +642,219 @@ public class MainFrame extends JFrame {
         separator_1.setBounds(10, 39, 499, 4);
         tabReportPanel.add(separator_1);
         
-        JLabel lblNumberOfTransactions = new JLabel("Number of Transactions:");
-        lblNumberOfTransactions.setBounds(10, 54, 165, 14);
+        JLabel lblNumberOfTransactions = new JLabel("Number of Transactions Found:");
+        lblNumberOfTransactions.setBounds(10, 196, 165, 14);
         tabReportPanel.add(lblNumberOfTransactions);
         
-        numberOfTransactionsValue = new JLabel("0");
-        numberOfTransactionsValue.setBounds(185, 54, 46, 14);
+        numberOfTransactionsValue = new JLabel("-");
+        numberOfTransactionsValue.setBounds(185, 196, 46, 14);
         tabReportPanel.add(numberOfTransactionsValue);
         
-        JLabel lblRevenue = new JLabel("Revenue:");
-        lblRevenue.setBounds(10, 79, 150, 14);
+        JLabel lblRevenue = new JLabel("Total Revenue:");
+        lblRevenue.setBounds(10, 221, 150, 14);
         tabReportPanel.add(lblRevenue);
         
         lblRevenueValue = new JLabel("$0");
-        lblRevenueValue.setBounds(185, 79, 113, 14);
+        lblRevenueValue.setBounds(185, 221, 113, 14);
         tabReportPanel.add(lblRevenueValue);
         
-        JLabel lblSalesTax_1 = new JLabel("Sales Tax:");
-        lblSalesTax_1.setBounds(10, 104, 150, 14);
+        JLabel lblSalesTax_1 = new JLabel("Total Sales Tax:");
+        lblSalesTax_1.setBounds(10, 246, 150, 14);
         tabReportPanel.add(lblSalesTax_1);
         
         lblNetSalesTaxValue = new JLabel("$0");
-        lblNetSalesTaxValue.setBounds(185, 104, 113, 14);
+        lblNetSalesTaxValue.setBounds(185, 246, 113, 14);
         tabReportPanel.add(lblNetSalesTaxValue);
         
         JLabel lblNetIncome = new JLabel("Net Income:");
-        lblNetIncome.setBounds(10, 129, 150, 14);
+        lblNetIncome.setBounds(10, 271, 150, 14);
         tabReportPanel.add(lblNetIncome);
         
         lblNetIncomeValue = new JLabel("$0");
-        lblNetIncomeValue.setBounds(185, 129, 113, 14);
+        lblNetIncomeValue.setBounds(185, 271, 113, 14);
         tabReportPanel.add(lblNetIncomeValue);
         
-        JLabel lblDetailsAreCurrent = new JLabel("Details are updated after each transaction is saved");
-        lblDetailsAreCurrent.setFont(new Font("Calibri", Font.BOLD, 11));
-        lblDetailsAreCurrent.setHorizontalAlignment(SwingConstants.RIGHT);
-        lblDetailsAreCurrent.setBounds(223, 18, 286, 14);
-        tabReportPanel.add(lblDetailsAreCurrent);
+        String[] strValues = new String[] {
+        		"All",
+        		"Last Hour",
+        		"Last Day",
+        		"Last Week",
+        		"Last Month",
+        		"Last Year"
+        };
+        final JComboBox comboReportByDate = new JComboBox(strValues);
+        comboReportByDate.setBounds(156, 54, 327, 20);
+        tabReportPanel.add(comboReportByDate);
+        
+        JLabel lblGenerateReport = new JLabel("Generate Report By Date:");
+        lblGenerateReport.setBounds(10, 57, 165, 14);
+        tabReportPanel.add(lblGenerateReport);
+        
+        JLabel lblGenerateReportBy = new JLabel("Generate Report By Value:");
+        lblGenerateReportBy.setBounds(10, 87, 136, 14);
+        tabReportPanel.add(lblGenerateReportBy);
+        
+        strValues = new String[] {
+        		"All",
+        		"< $100",
+        		"$100 - $500",
+        		"$500 - $1000",
+        		"$1000+"
+        };
+        final JComboBox comboReportByValue = new JComboBox(strValues);
+        comboReportByValue.setBounds(156, 84, 327, 20);
+        tabReportPanel.add(comboReportByValue);
+        
+        JButton btnGenerate = new JButton("Generate");
+        
+        // Listener to generate a report when the button is clicked
+        btnGenerate.addActionListener(new ActionListener() {
+        	public void actionPerformed(ActionEvent event) {
+        		String query = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_TRANSACTIONS;
+        				
+        		String byDate = (String)comboReportByDate.getSelectedItem();
+        		String byValue = (String)comboReportByValue.getSelectedItem();
+        		
+        		// Check if we need to use a where clause
+        		if(!byDate.equals("All") || !byValue.equals("All"))
+        		{
+        			query += " WHERE";
+        		}
+        		
+        		// Used to calculate the dates
+        		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        		Date pastDate = new Date();
+        		long DAY_IN_MS = 1000 * 60 * 60 * 24;
+        		long HOUR_IN_MS = 1000 * 60 * 60;
+        		
+        		// Add the appropriate date where clause if necessary
+        		switch(comboReportByDate.getSelectedIndex()) {
+        			case 0:
+        				// Do nothing, this is the all option
+        				break;
+        				
+        			// Last Hour
+        			case 1:        				
+        				// Subtract one hour from the current time
+        				pastDate = new Date(pastDate.getTime() - HOUR_IN_MS);
+        				
+        				query += " DATE >= '" + Timestamp.valueOf(dateFormat.format(pastDate)) + "'";
+        				break;
+        				
+        			// Last Day
+        			case 2:
+        				pastDate = new Date(pastDate.getTime() - DAY_IN_MS);
+        				
+        				query += " DATE >= '" + Timestamp.valueOf(dateFormat.format(pastDate)) + "'";
+        				break;
+        				
+        			// Last Week
+        			case 3:
+        				pastDate = new Date(pastDate.getTime() - (7 * DAY_IN_MS));
+        				
+        				query += " DATE >= '" + Timestamp.valueOf(dateFormat.format(pastDate)) + "'";
+        				break;
+        				
+        			// Last Month
+        			case 4:
+        				pastDate = new Date(pastDate.getTime() - (30 * DAY_IN_MS));
+        				
+        				query += " DATE >= '" + Timestamp.valueOf(dateFormat.format(pastDate)) + "'";
+        				break;
+        				
+        			// Last Year
+        			case 5:
+        				pastDate = new Date(pastDate.getTime() - (365 * DAY_IN_MS));
+        				
+        				query += " DATE >= '" + Timestamp.valueOf(dateFormat.format(pastDate)) + "'";
+        				break;
+        		}
+        		
+        		// Add the AND keyword if we have both a date & value to limit by
+        		if(comboReportByDate.getSelectedIndex() != 0 && comboReportByValue.getSelectedIndex() != 0)
+					query += " AND";
+				
+        		
+        		switch(comboReportByValue.getSelectedIndex()) {
+        			// All
+        			case 0:
+        				// Do nothing
+        				break;
+        			
+        			// < $100
+        			case 1:        				
+        				query += " GRAND_TOTAL < 100.00";
+        				break;
+        				
+        			// $100 - $500
+        			case 2:
+        				query += " GRAND_TOTAL >= 100.00 AND GRAND_TOTAL < 500.00";
+        				break;
+        				
+        			// $500 - $1000
+        			case 3:
+        				query += " GRAND_TOTAL >= 500.00 AND GRAND_TOTAL < 1000.00";
+        				break;
+        				
+        			// $1000+
+        			case 4:
+        				query += " GRAND_TOTAL >= 1000.00";
+        				break;
+        		}
+        		
+        		PreparedStatement ps;
+        		try {
+        			// Prepare and run the query
+        			ps = dbManager.getConnection().prepareStatement(query);
+        			ResultSet results = ps.executeQuery();
+        			
+        			// Setup the number counters
+        			int numberOfTransactions = 0;
+            		double netincome = 0;
+        			totalRevenue = 0;
+        			totalSalesTax = 0;
+        			
+        			// Loop through and add the numbers to our totals
+        			while(results.next()) {
+        				numberOfTransactions++;
+        				
+        				totalRevenue += results.getDouble("GRAND_TOTAL");
+        				totalSalesTax += results.getDouble("SALES_TAX");
+        			}
+        			// Calculate net income
+        			netincome = totalRevenue - totalSalesTax;
+        		
+        			// Update the report ui elements
+        			numberOfTransactionsValue.setText(NumberFormat.getIntegerInstance().format(numberOfTransactions));
+            		lblRevenueValue.setText(currencyFormat.format(totalRevenue));
+            		lblNetSalesTaxValue.setText(currencyFormat.format(totalSalesTax));
+            		lblNetIncomeValue.setText(currencyFormat.format(netincome));
+            		lblReportGeneratedAt.setText("Generated At: " + new Date().toString());
+            	
+            	// Catch any SQL errors
+        		} catch(SQLException e) {
+        			JOptionPane.showMessageDialog(null, "An error occured generating the report:\n\r" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        			return;
+        		}        		
+        	}
+        });
+        btnGenerate.setBounds(156, 115, 89, 23);
+        tabReportPanel.add(btnGenerate);
+        
+        JLabel lblReportDetails_1 = new JLabel("Report Details");
+        lblReportDetails_1.setFont(new Font("Cambria", Font.BOLD, 18));
+        lblReportDetails_1.setBounds(10, 149, 165, 22);
+        tabReportPanel.add(lblReportDetails_1);
+        
+        JSeparator separator_3 = new JSeparator();
+        separator_3.setBounds(10, 181, 499, 4);
+        tabReportPanel.add(separator_3);
+        
+        lblReportGeneratedAt = new JLabel("");
+        lblReportGeneratedAt.setHorizontalAlignment(SwingConstants.RIGHT);
+        lblReportGeneratedAt.setFont(new Font("Calibri", Font.BOLD, 11));
+        lblReportGeneratedAt.setBounds(223, 271, 286, 14);
+        tabReportPanel.add(lblReportGeneratedAt);
         
         JPanel tabInventoryPanel = new JPanel();
         tabbedPane.addTab("Inventory", null, tabInventoryPanel, null);
@@ -801,7 +890,7 @@ public class MainFrame extends JFrame {
         
         JButton btnAddItemToInventory = new JButton("Add Item");
         
-        // Listen for clicks on the add item button
+        // Listen for clicks on the add item to inventory button
         btnAddItemToInventory.addActionListener(new ActionListener() {
         	public void actionPerformed(ActionEvent arg0) {
         		try {
@@ -851,6 +940,9 @@ public class MainFrame extends JFrame {
 						textAddItemName.setText("");
 						textAddItemPrice.setText("");
 						
+						// Refresh the combo box that holds the inventory items
+						refreshItemComboBox();
+						
 					} catch (SQLException e) {
 						JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
 					}
@@ -879,10 +971,413 @@ public class MainFrame extends JFrame {
         tableInventory.getColumnModel().getColumn(0).setCellRenderer(centerRenderer);
         tableInventory.getColumnModel().getColumn(2).setCellRenderer(centerRenderer);
         
+        // Listen for double clicks on the inventory table
+ 		// This will allow for editing of the inventory item
+ 		tableInventory.addMouseListener(new MouseAdapter() {
+ 			@Override
+ 			public void mouseClicked(MouseEvent e) {
+ 				// Only double clicks
+ 				if(e.getClickCount() == 2) {
+ 					// Get the row clicked on
+ 					int row = tableInventory.rowAtPoint(e.getPoint());
+ 				
+ 					// Get the inventory item selected
+ 					InventoryTableModel model = (InventoryTableModel)tableInventory.getModel(); 					
+ 					InventoryItem item = model.getRow(row);
+ 					
+ 					displayEditInventoryTab(item);
+ 				}
+ 			}
+ 		});
+        
         JScrollPane scrollPaneInventoryTable = new JScrollPane(tableInventory);
-        scrollPaneInventoryTable.setBounds(20, 84, 478, 215);
+        scrollPaneInventoryTable.setBounds(20, 84, 478, 181);
         tabInventoryPanel.add(scrollPaneInventoryTable);
         
+        JButton btnActivateSelected = new JButton("Activate Selected");
         
+        // Listener to active items in the inventory
+        btnActivateSelected.addActionListener(new ActionListener() {
+        	public void actionPerformed(ActionEvent event) {
+        		int[] rows = tableInventory.getSelectedRows();
+        		
+        		if(rows.length <= 0)
+        		{
+        			JOptionPane.showMessageDialog(null, "Please select the items to activate from above.", "Error", JOptionPane.ERROR_MESSAGE);
+        			return;
+        		}
+        		
+        		// Loop through the rows and attempt to update them
+        		for(int row : rows) {
+        			InventoryTableModel model = (InventoryTableModel)tableInventory.getModel();
+        			InventoryItem item = model.getRow(row);
+        			
+        			// If the item is already active no need to update database, just continue to next row
+        			if(item.isActive())
+        				continue;
+        			
+        			String query = "UPDATE " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY +
+        					" SET ACTIVE = 1" +
+        					" WHERE ITEM_ID = " + item.getID();
+        			
+        			PreparedStatement ps;
+					try {
+						ps = dbManager.getConnection().prepareStatement(query);
+						ps.executeUpdate();
+						ps.close();
+					} catch (SQLException e) {
+						JOptionPane.showMessageDialog(null, "Unable to activate \"" + item.getName() + "\"\n\r" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+					}        			
+        		}
+        		
+        		// Refresh the ui displays
+        		refreshInventoryTable();
+        		refreshItemComboBox();
+        	}
+        });
+        btnActivateSelected.setBounds(126, 276, 129, 23);
+        tabInventoryPanel.add(btnActivateSelected);
+        
+        JButton btnDeactivateSelected = new JButton("Deactivate Selected");
+        
+        // Listener to deactive items in the inventory
+        btnDeactivateSelected.addActionListener(new ActionListener() {
+        	public void actionPerformed(ActionEvent event) {
+        		int[] rows = tableInventory.getSelectedRows();
+        		
+        		if(rows.length <= 0)
+        		{
+        			JOptionPane.showMessageDialog(null, "Please select the items to deactivate from above.", "Error", JOptionPane.ERROR_MESSAGE);
+        			return;
+        		}
+        		
+        		// Loop through the rows and attempt to update them
+        		for(int row : rows) {
+        			InventoryTableModel model = (InventoryTableModel)tableInventory.getModel();
+        			InventoryItem item = model.getRow(row);
+        			
+        			// If the item is already inactive no need to update database, just continue to next row
+        			if(!item.isActive())
+        				continue;
+        			
+        			String query = "UPDATE " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY +
+        					" SET ACTIVE = 0" +
+        					" WHERE ITEM_ID = " + item.getID();
+        			
+        			PreparedStatement ps;
+					try {
+						ps = dbManager.getConnection().prepareStatement(query);
+						ps.executeUpdate();
+						ps.close();
+					} catch (SQLException e) {
+						JOptionPane.showMessageDialog(null, "Unable to deactivate \"" + item.getName() + "\"\n\r" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+					}        			
+        		}
+        		
+
+        		// Update the ui displays
+        		refreshInventoryTable();
+        		refreshItemComboBox();
+        	}
+        });
+        btnDeactivateSelected.setBounds(265, 276, 150, 23);
+        tabInventoryPanel.add(btnDeactivateSelected);
+        
+        JLabel lblDoubleClickAn = new JLabel("Double click an item below to edit it");
+        lblDoubleClickAn.setHorizontalAlignment(SwingConstants.RIGHT);
+        lblDoubleClickAn.setFont(new Font("Calibri", Font.BOLD, 11));
+        lblDoubleClickAn.setBounds(223, 19, 286, 14);
+        tabInventoryPanel.add(lblDoubleClickAn);
+        
+        
+	}
+	
+	/*
+	 * Takes a transaction as a parameter and creates a new tab on the UI with the receipt details
+	 */
+	public void displayEditInventoryTab(InventoryItem item) {		
+		// Add a new tab
+        JPanel editItemPanel = new JPanel();
+        tabbedPane.addTab("Edit Item", null, editItemPanel, null);
+        
+        // Make sure this new tab is selected
+        tabbedPane.setSelectedIndex(tabbedPane.getTabCount() - 1);
+        editItemPanel.setLayout(null);
+        
+        // Add all the UI components to the tab
+        JLabel lblInventoryItem = new JLabel("Edit Inventory Item");
+        lblInventoryItem.setBounds(10, 11, 265, 22);
+        lblInventoryItem.setFont(new Font("Cambria", Font.BOLD, 18));
+        editItemPanel.add(lblInventoryItem);
+        
+        JSeparator separator1 = new JSeparator();
+        separator1.setBounds(10, 39, 495, 4);
+        editItemPanel.add(separator1);        
+		
+		JLabel lblItemID = new JLabel("ID: ");
+		lblItemID.setBounds(10, 69, 86, 14);
+		editItemPanel.add(lblItemID);
+		
+		final JTextField textItemID = new JTextField(Integer.toString(item.getID()));
+		textItemID.setBounds(100, 67, 86, 20);
+		textItemID.setColumns(10);
+		textItemID.setEnabled(false);
+		editItemPanel.add(textItemID);
+		
+		JLabel lblItemName = new JLabel("Name:");
+		lblItemName.setBounds(10, 94, 86, 14);
+		editItemPanel.add(lblItemName);
+		
+		final JTextField textItemName = new JTextField(item.getName());
+		textItemName.setBounds(100, 92, 86, 20);
+		textItemName.setColumns(10);
+		editItemPanel.add(textItemName);
+		
+		JLabel lblItemDefaultPrice = new JLabel("Default Price:");
+		lblItemDefaultPrice.setBounds(10, 119, 86, 14);
+		editItemPanel.add(lblItemDefaultPrice);
+		
+		final JTextField textItemPrice = new JTextField(Double.toString(item.getPrice()));
+		textItemPrice.setBounds(100, 117, 86, 20);
+		textItemPrice.setColumns(10);
+		editItemPanel.add(textItemPrice);
+		
+		JLabel lblIsActive = new JLabel("Active?");
+		lblIsActive.setBounds(10, 144, 103, 14);
+		editItemPanel.add(lblIsActive);
+		
+		final JCheckBox checkItemActive = new JCheckBox();
+		checkItemActive.setBounds(100, 140, 20, 20);
+		checkItemActive.setSelected(item.isActive());
+		editItemPanel.add(checkItemActive);
+		
+		// Add a "save" button that saves the selected tab without closing
+		JButton btnSaveChanges = new JButton("Save Changes");
+		btnSaveChanges.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent a) {				
+				if(textItemName.getText().equals("") || textItemPrice.getText().equals(""))
+    			{
+    				JOptionPane.showMessageDialog(null, "You must enter an item name and default price.", "Error", JOptionPane.ERROR_MESSAGE);
+    				return;
+    			}				
+				
+				int id = Integer.parseInt(textItemID.getText());
+				int activeValue = checkItemActive.isSelected() ? 1 : 0;
+				double price;
+				try {
+					price = Double.parseDouble(textItemPrice.getText());
+				} catch(NumberFormatException e) {
+					JOptionPane.showMessageDialog(null, "Please enter a valid price. " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+					return;
+				}			
+				
+				String query = "UPDATE " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY +
+						" SET NAME = '" + textItemName.getText() + "', " +
+						"DEFAULT_PRICE = " + price + ", " +
+						"ACTIVE = " + activeValue + " " +
+						"WHERE ITEM_ID = " + id;
+				
+				PreparedStatement ps;
+				try {
+					ps = dbManager.getConnection().prepareStatement(query);
+					ps.executeUpdate();
+					ps.close();
+				} catch (SQLException e) {
+					JOptionPane.showMessageDialog(null, "Unable to update the inventory item.\n\r" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);					
+				}
+				
+				refreshInventoryTable();
+				refreshItemComboBox();
+				
+				// Close the tab
+				tabbedPane.remove(tabbedPane.getSelectedIndex());
+				tabbedPane.setSelectedIndex(2);
+			}
+		});
+		btnSaveChanges.setBounds(10, 276, 155, 23);
+		editItemPanel.add(btnSaveChanges);
+		
+		// Add a "close" button that closes the selected tab without saving
+		JButton btnCloseNoSaving = new JButton("Close");
+		btnCloseNoSaving.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent a) {
+				tabbedPane.remove(tabbedPane.getSelectedIndex());
+				tabbedPane.setSelectedIndex(2);
+			}
+		});
+		btnCloseNoSaving.setBounds(175, 276, 155, 23);
+		editItemPanel.add(btnCloseNoSaving);
+       
+	}
+	
+	private void refreshTransactionsTable() {
+		// Load the transactions from the database into the recent transactions display
+		try {
+			// reset the table
+			TransactionsTableModel model = (TransactionsTableModel)tableTransactions.getModel();
+			model.reset();
+			
+			// Our query, select transactions ordered by date
+			String strPs = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_TRANSACTIONS +
+					" ORDER BY DATE ASC";
+			
+			// Use a prepared statement to execute on the database
+			PreparedStatement ps = dbManager.getConnection().prepareStatement(strPs);
+			ResultSet result = ps.executeQuery();
+			
+			// Loop through the results
+			while(result.next()) {
+				// Create a new transaction to store the information in
+				Transaction t = new Transaction();
+				
+				// Set the data
+				t.setDate(result.getTimestamp("DATE"));
+				t.setSubTotal(result.getDouble("SUBTOTAL"));
+				t.setSalesTax(result.getDouble("SALES_TAX"));
+				t.setGrandTotal(result.getDouble("GRAND_TOTAL"));
+				
+				// Read in the items
+				Clob items = result.getClob("ITEMS");
+				
+				// Read the items from the clob into a string
+				String itemStr = items.getSubString(1, (int) items.length());
+				
+				// Loop through the items and add them to the transaction
+				String[] segments = itemStr.split(",");
+				String item;
+				for(int i = 0; i < segments.length; i++){
+					item = segments[i];
+					
+					// Make sure its formatted correctly
+					if(item.startsWith("[") && item.endsWith("]")) {
+						
+						// Split off the surrounding [ & ]
+						item = item.substring(1);
+						item = item.substring(0, item.length() - 1);
+						
+						// Split the item string into segments
+						String itemSegments[] = item.split("~~");
+						
+						// If there aren't three segments something is wrong, just go the next one
+						if(itemSegments.length != 3){
+							continue;
+						}
+						
+						// Load the data into a new item
+						Item it = new Item();
+						it.setName(itemSegments[0]);
+						
+						// try to parse the data into double & int respectively
+						try {
+							it.setPrice(Double.parseDouble(itemSegments[1]));
+							it.setQuantity(Integer.parseInt(itemSegments[2]));
+							
+						// If it isn't formatted right go to the next item
+						} catch (NumberFormatException ex) {
+							continue;
+						}
+						
+						// Add the item to the transaction
+						t.addItem(it);
+					}
+				}				
+				
+				// Add the transaction to the recent transactions table
+				tableTransactions.getModel().setValueAt(t, 0, 0);
+			}
+			
+			// Close the statement
+			ps.close();
+			
+		}
+		catch(SQLException ex) {
+			System.out.println(ex.getMessage());
+		}
+	}
+	
+	private void refreshInventoryTable() {
+		// Load the item inventory into the table
+		try {
+			// reset the table
+			InventoryTableModel model = (InventoryTableModel)tableInventory.getModel();
+			model.reset();
+			
+			// Setup the query
+			String query = "SELECT * FROM " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY;
+			
+			// Execute it
+			PreparedStatement ps = dbManager.getConnection().prepareStatement(query);
+			ResultSet results = ps.executeQuery();
+			
+			// Loop through each row from the query results
+			while(results.next()) {
+				InventoryItem item = new InventoryItem();
+				
+				item.setID(results.getInt("ITEM_ID"));
+				item.setName(results.getString("NAME"));
+				item.setPrice(results.getDouble("DEFAULT_PRICE"));
+				item.setActive(results.getBoolean("ACTIVE"));				
+				
+				tableInventory.getModel().setValueAt(item, 0, 0);				
+			}
+					
+			results.close();
+			ps.close();
+			
+		} catch(SQLException e) {
+			JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+		}
+	}
+	
+	private void refreshItemComboBox() {
+		// Load the item inventory into the table
+		try {
+			// Setup the query
+			String query = "SELECT (NAME) FROM " + dbManager.getDbName() + "." + dbManager.TABLE_INVENTORY +
+					" WHERE ACTIVE = 1" +
+					" ORDER BY NAME ASC";
+			
+			// Execute it
+			PreparedStatement ps = dbManager.getConnection().prepareStatement(query);
+			ResultSet results = ps.executeQuery();
+			
+			// Setup an array list to hold the names
+			ArrayList<String> itemNames = new ArrayList<String>();
+			
+			// Loop through each row from the query results
+			while(results.next()) {
+				itemNames.add(results.getString("NAME"));
+			}
+					
+			// Remove all the previous items in the combobox
+			comboItemName.removeAllItems();
+
+			// Check if we are actually adding any items now
+			if(itemNames.size() > 0)
+			{			
+				// If so make sure the combobox is enabled
+				comboItemName.setEnabled(true);
+				btnAddItem.setEnabled(true);
+				
+				// And add the items
+				for(String str : itemNames) {
+				   comboItemName.addItem(str);
+				}
+			// Else there are no items to add
+			} else {
+				// Display a message in the combo box asking for an item to be added to inventory
+				comboItemName.addItem("Please add at least 1 active item to the inventory.");
+				
+				// Disable the combobox
+				comboItemName.setEnabled(false);
+				btnAddItem.setEnabled(false);
+			}
+			
+			results.close();
+			ps.close();
+			
+		} catch(SQLException e) {
+			JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+		}
 	}
 }

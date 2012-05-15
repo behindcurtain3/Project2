@@ -108,5 +108,9 @@ public class InventoryTableModel extends AbstractTableModel {
 		// Make sure the table display updates
 		fireTableDataChanged();
 	}
+	
+	public InventoryItem getRow(int row) {
+		return data.get(row);
+	}
 
 }
